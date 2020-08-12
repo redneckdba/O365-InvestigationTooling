@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+
+MYSQL=/usr/bin/mysql
+USER=
+PASS=
+
+while read -r line;do
+if [ "x${line}" != "x" ];then
+  event_id=$(echo "$line" | cut -f1)
+  event_ts=$(echo "$line" | cut -f2)
+  event_ip=$(echo "$line" | cut -f3)
+  event_user=$(echo "$line" | cut -f4)
+  whois_info=$(whois ${event_ip})
+  printf "Warning: Failed login attempt occured at %s for user %s from ip address: %s\n" "${event_ts}" "${event_user}" "${event_ip}"
+  printf "%s\n" "--------------------------------------------------------------------------"
+  printf "WHOIS IFORMATION for source address:\n%s\n" "${whois_info}"
+  printf "==========================================================================\n"
+  su - mysql -s /bin/bash -c "$MYSQL -N --skip-pager -u ${USER} --password=${PASS} -e \"USE o365investigations;\nUPDATE auditaad set Reported = 1 where id = '${event_id}';\""
+fi
+done <<< "$(su - mysql -s /bin/bash -c "$MYSQL -N --skip-pager -u ${USER} --password=${PASS} -e \"USE o365investigations;\n
+SELECT id,
+       creationtime,
+       clientip,
+       userid
+FROM auditaad
+WHERE     ResultStatus = 'Failed'
+      AND CreationTime > DATE_ADD(CURDATE(), INTERVAL -2 DAY)
+      AND Reported <> 1
+      AND userid NOT LIKE '%@DOMAIN.TLD'  -- filter out tld
+      AND userid NOT LIKE '%@ad.domain.tld'  -- filter out on-prem UPN
+      AND userid NOT IN ('user1@domain.tld','user2@domain.tld','user3@domain.tld') -- filter out invalid users which are still probed due to cred stuffing attempts
+      AND NOT (    userid = 'user@domain.tld'
+               AND ClientIP = 'IPADDR')  -- specific account from specific ip address
+ORDER BY auditaad.CreationTime DESC;\" | grep -vE "PAGER"")"
