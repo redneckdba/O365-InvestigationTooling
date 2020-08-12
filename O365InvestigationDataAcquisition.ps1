@@ -1,4 +1,4 @@
-
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 function Check-AzureSetup 
 {
     $setupBlocked = $false
@@ -15,7 +15,7 @@ function Check-AzureSetup
     {
         try 
         {
-        	$azurePSRoot="C:\Program Files (x86)\Microsoft SDKs\Azure\Powershell"
+            $azurePSRoot="C:\Program Files (x86)\Microsoft SDKs\Azure\Powershell"
             $azureServiceManagementModule= $azurePSRoot + "\ServiceManagement\Azure\Azure.psd1"
             Write-Output "Checking Azure Service Management module: $azureServiceManagementModule"
             Write-Output "Looking good!"
@@ -144,18 +144,9 @@ foreach ($wl in $workLoads)
 {
     for ($i = 0; $i -lt $dateRange.Length -1; $i++)
     {
-        $apiFilters += "?contentType=$wl&startTime=" + $dateRange[$i] + "&endTime=" + $dateRange[$i+1]
+        $apiFilters += "?contentType=$wl&PublisherIdentifier=$TenantGUID&startTime=" + $dateRange[$i] + "&endTime=" + $dateRange[$i+1]
     }
 }
-
-#foreach ($wl in $workLoads)
-#{
-#    for ($i = 0; $i -lt $days.Length -1; $i++)
-#    {
-#        $apiFilters += "?contentType=$wl&startTime=" + $days[$i] + "&endTime=" + $days[$i+1]
-#    }
-#}
-
 
 #Then execute the content enumeration method per workload, per day
 foreach ($pull in $apiFilters)
@@ -167,8 +158,11 @@ foreach ($pull in $apiFilters)
         $thatRabbit = $rawRef
         while ($pageTracker -ne $false)
         {
-        	$thisRabbit = Invoke-WebRequest -Headers $headerParams -Uri $thatRabbit.Headers.NextPageUri
-            Write-Output "We just called a rabbit: " $thatRabbit.Headers.NextPageUri
+        	$uri = $thatRabbit.Headers.NextPageUri + "&PublisherIdentifier=" + $TenantGUID
+			$thisRabbit = Invoke-WebRequest -Headers $headerParams -Uri $uri
+
+			Write-Output "We just called a rabbit: " $uri
+
 			$rawData += $thisRabbit
 
 			If ($thisRabbit.Headers.NextPageUri)
@@ -257,7 +251,9 @@ function Export-LocalFiles ($blobs) {
         else
         {
             #Get the datums
-            $thisBlobdata = Invoke-WebRequest -Headers $headerParams -Uri $blobs[$i].contentUri
+			$bloburi = $blobs[$i].contentUri + "?PublisherIdentifier=" + $TenantGUID
+			$thisBlobdata = Invoke-WebRequest -Headers $headerParams -Uri $bloburi
+            #$thisBlobdata = Invoke-WebRequest -Headers $headerParams -Uri $blobs[$i].contentUri
         
             #Write it to JSON
             $thisBlobdata.Content | Out-File (".\JSON\" + $blobs[$i].contentType + $blobs[$i].contentCreated.Substring(0,10) + "--" + $blobs[$i].contentID + ".json")
@@ -382,7 +378,8 @@ function Export-MySQL ($blobs) {
             Write-Host "New token lifespan is $oauthExpiration"; 
         }
         #Get the datums
-        $thisBlobdata = Invoke-WebRequest -Headers $headerParams -Uri $blobs[$i].contentUri
+        $bloburi = $blobs[$i].contentUri + "?PublisherIdentifier=" + $TenantGUID
+        $thisBlobdata = Invoke-WebRequest -Headers $headerParams -Uri $bloburi
         
         #Get it into a more work-able format
         $altFormat = $thisBlobdata.Content | ConvertFrom-Json
@@ -644,3 +641,4 @@ if ($globalConfig.StoreDataInAzureBlob -eq "True") { Export-AzureBlob $blobs; }
 
 #This will export eh data in the API to a Azure DocDB store
 if ($globalConfig.StoreDataInAzureDocDb -eq "True") { Export-AzureDocDb $blobs; }
+
